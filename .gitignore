@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+venv/
+dataset/
+output/*.tsv
+model.txt
+.DS_Store
