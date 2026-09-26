@@ -44,6 +44,9 @@ def _find_top_k_sparse(
 
     for start_idx in range(0, n_queries, chunk_size):
         end_idx = min(start_idx + chunk_size, n_queries)
+        if (start_idx // chunk_size) % 25 == 0:
+            print(f"      Scanned {start_idx:,}/{n_queries:,} queries...")
+
         chunk = query_matrix[start_idx:end_idx]
         sims = chunk.dot(cand_T).tocsr()
 
@@ -114,12 +117,12 @@ def generate_candidates(
 
         # --- PASS 1: Business Name Blocking ---
         print("    Vectorizing names...")
-        min_df_name = min(2, len(s1_names))
+        min_df_name = min(3, len(s1_names))
         name_vec = TfidfVectorizer(
             analyzer="char_wb",
-            ngram_range=(2, 4),
+            ngram_range=(3, 4),
             min_df=min_df_name,
-            max_features=60000,
+            max_features=35000,
             dtype=np.float32,
             sublinear_tf=True,
         )
@@ -128,7 +131,7 @@ def generate_candidates(
 
         print("    Searching top-K name candidates...")
         name_cands = _find_top_k_sparse(
-            s1_name_mat, other_name_mat, top_k=top_k_name, min_sim=min_name_sim
+            s1_name_mat, other_name_mat, top_k=top_k_name, min_sim=min_name_sim, chunk_size=1500
         )
 
         for q_idx, c_indices in name_cands.items():
@@ -143,22 +146,21 @@ def generate_candidates(
         has_addrs = any(len(a) > 5 for a in s1_addrs) and any(len(a) > 5 for a in other_addrs)
         if has_addrs and top_k_addr > 0:
             print("    Vectorizing addresses...")
-            min_df_addr = min(2, len(s1_addrs))
+            min_df_addr = min(3, len(s1_addrs))
             addr_vec = TfidfVectorizer(
                 analyzer="char_wb",
-                ngram_range=(3, 5),
+                ngram_range=(4, 5),
                 min_df=min_df_addr,
-                max_features=60000,
+                max_features=35000,
                 dtype=np.float32,
                 sublinear_tf=True,
             )
             s1_addr_mat = addr_vec.fit_transform(s1_addrs)
             other_addr_mat = addr_vec.transform(other_addrs)
 
-
             print("    Searching top-K address candidates...")
             addr_cands = _find_top_k_sparse(
-                s1_addr_mat, other_addr_mat, top_k=top_k_addr, min_sim=min_addr_sim
+                s1_addr_mat, other_addr_mat, top_k=top_k_addr, min_sim=min_addr_sim, chunk_size=1500
             )
 
             for q_idx, c_indices in addr_cands.items():
@@ -169,5 +171,6 @@ def generate_candidates(
         print(f"    Completed blocking for {country}!")
 
     return candidates
+
 
 
