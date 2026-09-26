@@ -37,67 +37,89 @@ def main(threshold: float = config.MATCH_THRESHOLD):
     s1_lookup = {r.entity_id: r for r in s1.itertuples(index=False)}
     all_s1_ids = list(s1["entity_id"])
 
-    # --- 1. candidate_pairs.tsv (blocking output, one row per Source 1 entity) ---
-    print("Preparing candidate pairs output...")
-    cand_rows, pair_rows = [], []
-    for s1_id in all_s1_ids:
-        cand_ids = candidates.get(s1_id, set())
-        cand_rows.append({
-            "source1_entity_id": s1_id,
-            "candidate_entity_ids": ",".join(sorted(cand_ids)),
-        })
-        s1_rec = s1_lookup[s1_id]
-        for cand_id in cand_ids:
-            cand_rec = lookup.get(cand_id)
-            if cand_rec is None:
-                continue
-            pair_rows.append({
-                "source1_entity_id": s1_id,
-                "candidate_entity_id": cand_id,
-                "name_a": s1_rec.business_name,
-                "name_b": cand_rec.business_name,
-                "addr_a": s1_rec.business_address,
-                "addr_b": cand_rec.business_address,
-                "country_a": s1_rec.country,
-                "country_b": cand_rec.country,
-            })
-
     candidate_out = os.path.join(config.OUTPUT_DIR, "candidate_pairs.tsv")
-    pd.DataFrame(cand_rows).to_csv(candidate_out, sep="\t", index=False)
-    print(f"Wrote {len(cand_rows):,} rows to {candidate_out}")
-
-    # --- 2. matching_results.tsv (model-scored, thresholded matches) ---
-    if pair_rows:
-        pairs_df = pd.DataFrame(pair_rows)
-        print(f"Extracting features for {len(pairs_df):,} test pairs...")
-        feats = build_feature_matrix(pairs_df)
-
-        print(f"Scoring test pairs with trained model from {config.MODEL_PATH}...")
-        model = lgb.Booster(model_file=config.MODEL_PATH)
-        pairs_df["score"] = model.predict(feats)
-
-        print(f"Applying decision threshold: {threshold:.2f}...")
-        matches = pairs_df[pairs_df["score"] >= threshold]
-    else:
-        matches = pd.DataFrame(columns=["source1_entity_id", "candidate_entity_id"])
-
-    grouped = (
-        matches.groupby("source1_entity_id")["candidate_entity_id"]
-        .apply(lambda ids: ",".join(sorted(set(ids))))
-        .to_dict()
-    )
-
-    match_rows = [
-        {"source1_entity_id": s1_id, "matched_entity_ids": grouped.get(s1_id, "")}
-        for s1_id in all_s1_ids
-    ]
-
     matching_out = os.path.join(config.OUTPUT_DIR, "matching_results.tsv")
-    pd.DataFrame(match_rows).to_csv(matching_out, sep="\t", index=False)
-    print(f"Wrote {len(match_rows):,} rows to {matching_out}")
+
+    print(f"Streaming candidate pairs and scoring with threshold {threshold:.2f}...")
+    model = lgb.Booster(model_file=config.MODEL_PATH)
+    matches_dict = {}
+
+    BATCH_SIZE = 150000
+    current_batch = []
+    total_pairs_scored = 0
+
+    with open(candidate_out, "w", encoding="utf-8") as f_cand:
+        f_cand.write("source1_entity_id\tcandidate_entity_ids\n")
+
+        for idx, s1_id in enumerate(all_s1_ids):
+            cand_ids = candidates.get(s1_id, set())
+            f_cand.write(f"{s1_id}\t{','.join(sorted(cand_ids))}\n")
+
+            s1_rec = s1_lookup.get(s1_id)
+            if s1_rec is None:
+                continue
+
+            for cand_id in cand_ids:
+                cand_rec = lookup.get(cand_id)
+                if cand_rec is None:
+                    continue
+                current_batch.append({
+                    "source1_entity_id": s1_id,
+                    "candidate_entity_id": cand_id,
+                    "name_a": s1_rec.business_name,
+                    "name_b": cand_rec.business_name,
+                    "addr_a": s1_rec.business_address,
+                    "addr_b": cand_rec.business_address,
+                    "country_a": s1_rec.country,
+                    "country_b": cand_rec.country,
+                })
+
+                if len(current_batch) >= BATCH_SIZE:
+                    batch_df = pd.DataFrame(current_batch)
+                    batch_feats = build_feature_matrix(batch_df)
+                    scores = model.predict(batch_feats)
+                    for s1_i, cand_i, sc in zip(
+                        batch_df["source1_entity_id"], batch_df["candidate_entity_id"], scores
+                    ):
+                        if sc >= threshold:
+                            if s1_i not in matches_dict:
+                                matches_dict[s1_i] = set()
+                            matches_dict[s1_i].add(cand_i)
+                    total_pairs_scored += len(current_batch)
+                    print(f"  Scored {total_pairs_scored:,} candidate pairs...")
+                    current_batch = []
+
+        # Flush any remaining pairs in the final batch
+        if current_batch:
+            batch_df = pd.DataFrame(current_batch)
+            batch_feats = build_feature_matrix(batch_df)
+            scores = model.predict(batch_feats)
+            for s1_i, cand_i, sc in zip(
+                batch_df["source1_entity_id"], batch_df["candidate_entity_id"], scores
+            ):
+                if sc >= threshold:
+                    if s1_i not in matches_dict:
+                        matches_dict[s1_i] = set()
+                    matches_dict[s1_i].add(cand_i)
+            total_pairs_scored += len(current_batch)
+            print(f"  Scored {total_pairs_scored:,} candidate pairs (complete)...")
+            current_batch = []
+
+    print(f"Wrote {len(all_s1_ids):,} rows to {candidate_out}")
+
+    print(f"Writing {len(all_s1_ids):,} final prediction rows to {matching_out}...")
+    with open(matching_out, "w", encoding="utf-8") as f_match:
+        f_match.write("source1_entity_id\tmatched_entity_ids\n")
+        for s1_id in all_s1_ids:
+            m_set = matches_dict.get(s1_id, set())
+            m_str = ",".join(sorted(m_set)) if m_set else ""
+            f_match.write(f"{s1_id}\t{m_str}\n")
+
+    print(f"Wrote {len(all_s1_ids):,} rows to {matching_out}")
     print("Inference completed successfully!")
 
 
 if __name__ == "__main__":
     main()
+
 
