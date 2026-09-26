@@ -107,14 +107,18 @@ def generate_candidates(
         s1_ids = s1_group["entity_id"].tolist()
         other_ids = other_group["entity_id"].tolist()
 
+        s1_names = s1_group["_norm_name"].tolist()
+        other_names = other_group["_norm_name"].tolist()
+
         print(f"  [Blocking - {country}] {len(s1_names):,} queries vs {len(other_names):,} candidates...")
 
         # --- PASS 1: Business Name Blocking ---
         print("    Vectorizing names...")
+        min_df_name = min(2, len(s1_names))
         name_vec = TfidfVectorizer(
             analyzer="char_wb",
             ngram_range=(2, 4),
-            min_df=3,
+            min_df=min_df_name,
             max_features=60000,
             dtype=np.float32,
             sublinear_tf=True,
@@ -139,16 +143,18 @@ def generate_candidates(
         has_addrs = any(len(a) > 5 for a in s1_addrs) and any(len(a) > 5 for a in other_addrs)
         if has_addrs and top_k_addr > 0:
             print("    Vectorizing addresses...")
+            min_df_addr = min(2, len(s1_addrs))
             addr_vec = TfidfVectorizer(
                 analyzer="char_wb",
                 ngram_range=(3, 5),
-                min_df=3,
+                min_df=min_df_addr,
                 max_features=60000,
                 dtype=np.float32,
                 sublinear_tf=True,
             )
             s1_addr_mat = addr_vec.fit_transform(s1_addrs)
             other_addr_mat = addr_vec.transform(other_addrs)
+
 
             print("    Searching top-K address candidates...")
             addr_cands = _find_top_k_sparse(
