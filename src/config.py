@@ -17,9 +17,14 @@ TEST_S2 = os.path.join(TEST_DIR, "test_source2.tsv")
 TEST_S3 = os.path.join(TEST_DIR, "test_source3.tsv")
 
 # Blocking / candidate generation
-TOP_K_CANDIDATES = 15   # candidates per Source1 entity, per country block
-MIN_NAME_SIM = 0.30     # floor TF-IDF cosine similarity to keep a candidate
+TOP_K_CANDIDATES = 15        # Name candidates per Source1 entity
+MIN_NAME_SIM = 0.28          # floor TF-IDF cosine similarity for name candidates
+TOP_K_ADDR_CANDIDATES = 5    # Address candidates per Source1 entity
+MIN_ADDR_SIM = 0.45          # floor TF-IDF cosine similarity for address candidates
+BLOCKING_CHUNK_SIZE = 2500   # batch size for matrix dot products
 
 # Matching
-MATCH_THRESHOLD = 0.5   # probability threshold — retune on your validation split
+MATCH_THRESHOLD = 0.65       # optimal probability threshold discovered on validation split
 RANDOM_STATE = 42
+
+

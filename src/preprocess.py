@@ -68,9 +68,8 @@ def _basic_clean(text: str) -> str:
     """Strips accents, URL domains, punctuation, and excess whitespace."""
     if text is None or not isinstance(text, str):
         return ""
-    # Unicode NFKD normalization to remove accents (é -> e, ô -> o, etc.)
-    text = unicodedata.normalize("NFKD", text)
-    text = "".join(c for c in text if not unicodedata.combining(c))
+    # Ultra-fast Unicode NFKD normalization to remove accents (é -> e, ô -> o, etc.)
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("utf-8")
     text = text.lower().strip()
     # Strip URL domains and prefixes
     text = _DOMAIN_PATTERN.sub(" ", text)
@@ -78,6 +77,7 @@ def _basic_clean(text: str) -> str:
     text = re.sub(r"[^\w\s]", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
 
 
 def normalize_name(name: str) -> str:
