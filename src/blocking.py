@@ -117,12 +117,10 @@ def generate_candidates(
 
         # --- PASS 1: Business Name Blocking ---
         print("    Vectorizing names...")
-        min_df_name = min(3, len(s1_names))
         name_vec = TfidfVectorizer(
-            analyzer="char_wb",
-            ngram_range=(3, 4),
-            min_df=min_df_name,
-            max_features=35000,
+            analyzer="word",
+            min_df=2,
+            max_features=50000,
             dtype=np.float32,
             sublinear_tf=True,
         )
@@ -131,7 +129,7 @@ def generate_candidates(
 
         print("    Searching top-K name candidates...")
         name_cands = _find_top_k_sparse(
-            s1_name_mat, other_name_mat, top_k=top_k_name, min_sim=min_name_sim, chunk_size=1500
+            s1_name_mat, other_name_mat, top_k=top_k_name, min_sim=min_name_sim, chunk_size=5000
         )
 
         for q_idx, c_indices in name_cands.items():
@@ -146,12 +144,10 @@ def generate_candidates(
         has_addrs = any(len(a) > 5 for a in s1_addrs) and any(len(a) > 5 for a in other_addrs)
         if has_addrs and top_k_addr > 0:
             print("    Vectorizing addresses...")
-            min_df_addr = min(3, len(s1_addrs))
             addr_vec = TfidfVectorizer(
-                analyzer="char_wb",
-                ngram_range=(4, 5),
-                min_df=min_df_addr,
-                max_features=35000,
+                analyzer="word",
+                min_df=2,
+                max_features=50000,
                 dtype=np.float32,
                 sublinear_tf=True,
             )
@@ -160,7 +156,7 @@ def generate_candidates(
 
             print("    Searching top-K address candidates...")
             addr_cands = _find_top_k_sparse(
-                s1_addr_mat, other_addr_mat, top_k=top_k_addr, min_sim=min_addr_sim, chunk_size=1500
+                s1_addr_mat, other_addr_mat, top_k=top_k_addr, min_sim=min_addr_sim, chunk_size=5000
             )
 
             for q_idx, c_indices in addr_cands.items():
@@ -169,6 +165,7 @@ def generate_candidates(
                     candidates[s1_id].add(other_ids[c_idx])
 
         print(f"    Completed blocking for {country}!")
+
 
     return candidates
 
