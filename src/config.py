@@ -19,8 +19,9 @@ TEST_S3 = os.path.join(TEST_DIR, "test_source3.tsv")
 # Blocking / candidate generation
 TOP_K_CANDIDATES = 15        # Name candidates per Source1 entity
 MIN_NAME_SIM = 0.28          # floor TF-IDF cosine similarity for name candidates
-TOP_K_ADDR_CANDIDATES = 5    # Address candidates per Source1 entity
+TOP_K_ADDR_CANDIDATES = 0    # disabled for high-speed inference without false candidate explosion
 MIN_ADDR_SIM = 0.45          # floor TF-IDF cosine similarity for address candidates
+
 BLOCKING_CHUNK_SIZE = 2500   # batch size for matrix dot products
 
 # Matching
